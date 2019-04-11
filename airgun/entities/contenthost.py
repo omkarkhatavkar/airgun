@@ -5,6 +5,10 @@ from airgun.views.contenthost import (
     ContentHostsView,
     ContentHostTaskDetailsView,
 )
+from airgun.views.job_invocation import (
+    JobInvocationCreateView,
+    JobInvocationStatusView,
+)
 
 
 class ContentHostEntity(BaseEntity):
@@ -55,11 +59,51 @@ class ContentHostEntity(BaseEntity):
         view.progressbar.wait_for_result()
         return view.read()
 
+    def execute_module_stream_action(self, entity_name, action_type, module_name, stream_version,
+                                     customize=False, customize_values=None):
+        """Execute remote module_stream action on a content
+
+        :param entity_name: content host name to remotely execute package
+            action on
+        :param action_type: remote action to execute. This is dict with containing 'action'
+            and 'is_customize' keys. Action key value can be one of
+            5: 'Enable', 'Disable', 'Install', 'Update', 'Remove', 'Reset'
+        :param module_name: Module Stream name to remotely
+            install/upgrade/remove (depending on `action_type`)
+        :param stream_version: this uniquely identifies the module with Stream Version
+        :param customize: special action type which should call on content host module streams
+            tab to run some custom expression related to module streams
+        :param customize_values: need to pass if run some custom command expression in content host
+
+        :return: Returns a dict containing job status details
+        """
+        if customize_values is None:
+            customize_values = {}
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.module_streams.search('name = {} and stream = {}'.format(module_name, stream_version))
+        if customize:
+            action_type = dict(is_customize=customize, action=action_type)
+        view.module_streams.table.row(
+            name=module_name, stream=stream_version)['Actions'].fill(action_type)
+        if customize:
+            view = JobInvocationCreateView(view.browser)
+            view.fill(customize_values)
+            view.submit.click
+        view = JobInvocationStatusView(view.browser)
+        view.wait_for_result()
+        return view.read()
+
     def search_package(self, entity_name, package_name):
         """Search for specific package installed in content host"""
         view = self.navigate_to(self, 'Edit', entity_name=entity_name)
         view.packages_installed.search(package_name)
         return view.packages_installed.table.read()
+
+    def search_module_stream(self, entity_name, module_name, status='All'):
+        """Search for specific package installed in content host"""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.module_streams.search(module_name, status)
+        return view.module_streams.table.read()
 
     def install_errata(self, entity_name, errata_id):
         """Install errata on a content host

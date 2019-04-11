@@ -79,6 +79,20 @@ class StatusIcon(GenericLocatorWidget):
         return self.color
 
 
+class ModuleStreamActionDropDown(ActionsDropdown):
+    """Custom drop down for module streams tab in content host page"""
+    customize_check_box = Checkbox(id="customize")
+
+    def fill(self, item):
+        value = item
+        if isinstance(item, dict):
+            if item.get('is_customize'):
+                self.open()
+                self.customize_check_box.click()
+            value = item['action']
+        self.select(value)
+
+
 class InstallableUpdatesCellView(View):
     """Installable Updates Table Cell View for content host view Table"""
     ROOT = '.'
@@ -272,6 +286,33 @@ class ContentHostDetailsView(BaseLoggedInView):
                 query = 'id = {}'.format(query)
             self.searchbox.search(query)
 
+            return self.table.read()
+
+    @View.nested
+    class module_streams(SatTab, SearchableViewMixin):
+        TAB_NAME = 'Module Streams'
+        status_filter = Select(
+            locator='.//select[@ng-model="nutupaneParams.status"]')
+        table = SatTable(
+            locator='//table',
+            column_widgets={
+                'Name': Text('.//a'),
+                'Actions': ModuleStreamActionDropDown(".//div[contains(@class, 'dropdown')]")
+            },
+        )
+
+        def search(self, query, status='All'):
+            """Searches for Module Streams. Apply available filters before
+            proceeding with searching. By default 'All' is passed
+
+            :param str query: search query to type into search field.
+            :param str optional status: filter by status of module stream on host
+            :return: list of dicts representing table rows
+            :rtype: list
+            """
+            if status is not None:
+                self.status_filter.fill(status)
+            self.searchbox.search(query)
             return self.table.read()
 
     @View.nested
