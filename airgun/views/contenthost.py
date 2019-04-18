@@ -1,316 +1,191 @@
-import re
-
-from widgetastic.widget import (
-    Checkbox,
-    GenericLocatorWidget,
-    ParametrizedView,
-    Select,
-    Text,
-    TextInput,
-    View,
-    Widget,
+from airgun.entities.base import BaseEntity
+from airgun.navigation import NavigateStep, navigator
+from airgun.views.contenthost import (
+    ContentHostDetailsView,
+    ContentHostsView,
+    ContentHostTaskDetailsView,
 )
-from widgetastic_patternfly import BreadCrumb, Button
-
-from airgun.views.common import (
-    AddRemoveResourcesView,
-    AddRemoveSubscriptionsView,
-    BaseLoggedInView,
-    LCESelectorGroup,
-    SatTab,
-    SatTabWithDropdown,
-    SatTable,
-    SearchableViewMixin,
-    TaskDetailsView,
-)
-from airgun.widgets import (
-    ActionsDropdown,
-    ConfirmationDialog,
-    EditableEntry,
-    EditableEntryCheckbox,
-    EditableEntryMultiCheckbox,
-    EditableEntrySelect,
-    ReadOnlyEntry,
-    Search,
+from airgun.views.job_invocation import (
+    JobInvocationCreateView,
+    JobInvocationStatusView,
 )
 
 
-class StatusIcon(GenericLocatorWidget):
-    """Small icon indicating subscription or katello-agent status. Can be
-    colored in either green, yellow or red.
+class ContentHostEntity(BaseEntity):
 
-    Example html representation::
+    def delete(self, entity_name):
+        """Delete existing content host"""
+        view = self.navigate_to(self, 'All')
+        view.search(entity_name)
+        view.table.row(name=entity_name)[0].widget.fill(True)
+        view.actions.fill('Remove Hosts')
+        view.dialog.confirm()
+        view.flash.assert_no_error()
+        view.flash.dismiss()
 
-        <span
-         ng-class="table.getHostStatusIcon(host.subscription_global_status)"
-         class="red host-status pficon pficon-error-circle-o status-error">
-        </span>
+    def search(self, value):
+        """Search for specific content host"""
+        view = self.navigate_to(self, 'All')
+        return view.search(value)
 
-    Locator example::
+    def read_all(self):
+        """Read all values from content host title page"""
+        view = self.navigate_to(self, 'All')
+        return view.read()
 
-        //span[contains(@ng-class, 'host.subscription_global_status')]
-        //i[contains(@ng-class, 'host.subscription_global_status')]
-    """
+    def read(self, entity_name, widget_names=None):
+        """Read content host details, optionally read only the widgets in widget_names."""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        return view.read(widget_names=widget_names)
 
-    def __init__(self, parent, locator=None, logger=None):
-        """Provide default locator value if it wasn't passed"""
-        if not locator:
-            locator = ".//span[contains(@ng-class, 'host.subscription_global_status')]"
-        Widget.__init__(self, parent, logger=logger)
-        self.locator = locator
+    def execute_package_action(self, entity_name, action_type, value):
+        """Execute remote package action on a content host
 
-    @property
-    def color(self):
-        """Returns string representing icon color: 'red', 'yellow', 'green' or
-        'unknown'.
+        :param entity_name: content host name to remotely execute package
+            action on
+        :param action_type: remote action to execute. Can be one of 5: 'Package
+            Install', 'Package Update', 'Package Remove', 'Group Install' or
+            'Group Remove'
+        :param value: Package or package group group name to remotely
+            install/upgrade/remove (depending on `action_type`)
+
+        :return: Returns a dict containing task status details
         """
-        colors = {
-            'rgba(204, 0, 0, 1)': 'red',
-            'rgba(236, 122, 8, 1)': 'yellow',
-            'rgba(63, 156, 53, 1)': 'green',
-        }
-        return colors.get(
-            self.browser.element(self, parent=self.parent).value_of_css_property('color'),
-            'unknown'
-        )
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.packages_actions.action_type.fill(action_type)
+        view.packages_actions.name.fill(value)
+        view.packages_actions.perform.click()
+        view = ContentHostTaskDetailsView(view.browser)
+        view.progressbar.wait_for_result()
+        return view.read()
 
-    def read(self):
-        """Returns current icon color"""
-        return self.color
+    def execute_module_stream_action(self, entity_name, action_type, module_name, stream_version,
+                                     customize=False, customize_values=None):
+        """Execute remote module_stream action on a content
 
+        :param entity_name: content host name to remotely execute package
+            action on
+        :param action_type: remote action to execute on content host. Action value can be one of
+            them e.g. 'Enable', 'Disable', 'Install', 'Update', 'Remove', 'Reset'
+        :param module_name: Module Stream name to remotely
+            install/upgrade/remove (depending on `action_type`)
+        :param stream_version: this uniquely identifies the module with Stream Version
+        :param customize: special action type which should call on content host module streams
+            tab to run some custom expression related to module streams
+        :param customize_values: need to pass if run some custom command expression in content host
 
-class InstallableUpdatesCellView(View):
-    """Installable Updates Table Cell View for content host view Table"""
-    ROOT = '.'
+        :return: Returns a dict containing job status details
+        """
+        if customize_values is None:
+            customize_values = {}
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.module_streams.search('name = {} and stream = {}'.format(module_name, stream_version))
+        action_type = dict(is_customize=customize, action=action_type)
+        view.module_streams.table.row(
+            name=module_name, stream=stream_version)['Actions'].fill(action_type)
+        if customize:
+            view = JobInvocationCreateView(view.browser)
+            view.fill(customize_values)
+            view.submit.click()
+        view = JobInvocationStatusView(view.browser)
+        view.wait_for_result()
+        return view.read()
 
-    @View.nested
-    class errata(View):
-        ROOT = "./a[contains(@ui-sref, 'errata')]"
+    def search_package(self, entity_name, package_name):
+        """Search for specific package installed in content host"""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.packages_installed.search(package_name)
+        return view.packages_installed.table.read()
 
-        security = Text(".//span[contains(@ng-class, 'errataCounts.security')]")
-        bug_fix = Text(".//span[contains(@ng-class, 'errataCounts.bugfix')]")
-        enhancement = Text(".//span[contains(@ng-class, 'errataCounts.enhancement')]")
+    def search_module_stream(self, entity_name, module_name, status='All'):
+        """Search for specific package installed in content host"""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.module_streams.search(module_name, status)
+        return view.module_streams.table.read()
 
-    packages = Text("./a[contains(@ui-sref, 'packages.applicable')]")
+    def install_errata(self, entity_name, errata_id, install_via=None):
+        """Install errata on a content host
 
+        :param name: content host name to apply errata on
+        :param errata_id: errata id or title, e.g. 'RHEA-2012:0055'
+        :param str install_via: Via which mean to install errata. Available
+        options: "via Katello Agent", "via remote execution",
+        "via remote execution - customize first"
+        :return: Returns a dict containing task status details
+        """
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.errata.search(errata_id)
+        view.errata.table.row(id=errata_id)[0].widget.fill(True)
+        if install_via is None:
+            view.errata.apply_selected.fill('Apply Selected')
+            view.dialog.confirm()
+        elif install_via == 'via remote execution':
+            view.errata.apply_selected.fill(install_via)
+        view = JobInvocationStatusView(view.browser)
+        view.wait_for_result()
+        return view.read()
 
-class ContentHostsView(BaseLoggedInView, SearchableViewMixin):
-    title = Text("//h2[contains(., 'Content Hosts')]")
-    export = Text(
-        ".//a[contains(@class, 'btn')][contains(@href, 'content_hosts.csv')]")
-    register = Text(".//button[@ui-sref='content-hosts.register']")
-    actions = ActionsDropdown(".//div[contains(@class, 'btn-group')]")
-    dialog = ConfirmationDialog()
-    table = SatTable(
-        './/table',
-        column_widgets={
-            0: Checkbox(locator="./input[@type='checkbox']"),
-            'Name': Text('./a'),
-            'Subscription Status': StatusIcon(),
-            'Installable Updates': InstallableUpdatesCellView(),
-        }
-    )
+    def search_errata(self, entity_name, errata_id, environment=None):
+        """Search for specific errata applicable for content host.
 
-    @property
-    def is_displayed(self):
-        return self.browser.wait_for_element(
-            self.title, exception=False) is not None
+        :param str entity_name: the content hosts name.
+        :param str errata_id: errata id or title, e.g. 'RHEA-2012:0055'
+        :param str optional environment: lifecycle environment to filter by.
+        """
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.errata.search(errata_id, lce=environment)
+        return view.errata.table.read()
 
+    def export(self):
+        """Export content hosts list.
 
-class ContentHostDetailsView(BaseLoggedInView):
-    breadcrumb = BreadCrumb()
-    unregister = Text(".//button[@ng-click='openModal()']")
-    dialog = ConfirmationDialog()
+        :return str: path to saved file
+        """
+        view = self.navigate_to(self, 'All')
+        view.export.click()
+        return self.browser.save_downloaded_file()
 
-    @property
-    def is_displayed(self):
-        breadcrumb_loaded = self.browser.wait_for_element(
-            self.breadcrumb, exception=False)
-        return (
-            breadcrumb_loaded
-            and self.breadcrumb.locations[0] == 'Content Hosts'
-            and len(self.breadcrumb.locations) > 1
-        )
+    def add_subscription(self, entity_name, subscription_name):
+        """Add a subscription to content host.
 
-    @View.nested
-    class details(SatTab):
-        # Basic information
-        name = EditableEntry(name='Name')
-        uuid = ReadOnlyEntry(name='UUID')
-        description = EditableEntry(name='Description')
-        type = ReadOnlyEntry(name='Type')
-        katello_agent = ReadOnlyEntry(name='Katello Agent')
-        virtual_guests = ReadOnlyEntry(name='Virtual Guests')
-        registered_through = ReadOnlyEntry(name='Registered Through')
-        # Subscriptions
-        subscription_status = ReadOnlyEntry(name='Subscription Status')
-        details = ReadOnlyEntry(name='Details')
-        auto_attach = EditableEntryCheckbox(name='Auto-Attach')
-        service_level = EditableEntrySelect(name='Service Level')
-        # System Purpose
-        system_purpose_status = ReadOnlyEntry(name='System Purpose Status')
-        service_level = EditableEntrySelect(name='Service Level (SLA)')
-        usage_type = EditableEntrySelect(name='Usage Type')
-        role = EditableEntrySelect(name='Role')
-        addons = EditableEntryMultiCheckbox(name='Add ons')
-        # Content Host Properties
-        os = ReadOnlyEntry(name='OS')
-        architecture = ReadOnlyEntry(name='Architecture')
-        number_of_cpus = ReadOnlyEntry(name='Number of CPUs')
-        sockets = ReadOnlyEntry(name='Sockets')
-        cores_per_socket = ReadOnlyEntry(name='Cores per Socket')
-        ram = ReadOnlyEntry(name='RAM (GB)')
-        virtual_guest = ReadOnlyEntry(name='Virtual Guest')
-        # Installable Errata
-        security = ReadOnlyEntry(name='Security')
-        bug_fix = ReadOnlyEntry(name='Bug Fix')
-        enhancement = ReadOnlyEntry(name='Enhancement')
-        # Content Host Content
-        release_version = EditableEntrySelect(name='Release Version')
-        content_view = EditableEntrySelect(name='Content View')
-        lce = ParametrizedView.nested(LCESelectorGroup)
-        # Content Host Status
-        registered = ReadOnlyEntry(name='Registered')
-        registered_by = ReadOnlyEntry(name='Registered By')
-        last_checkin = ReadOnlyEntry(name='Last Checkin')
+        :param str entity_name: the content hosts name.
+        :param str subscription_name: The subscription name to add to content host.
+        """
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.subscriptions.resources.add(subscription_name)
+        view.flash.assert_no_error()
+        view.flash.dismiss()
 
-    @View.nested
-    class provisioning_details(SatTab):
-        TAB_NAME = 'Provisioning Details'
-        name = ReadOnlyEntry(name='Name')
-        status = ReadOnlyEntry(name='Status')
-        operating_system = ReadOnlyEntry(name='Operating System')
-        puppet_environment = ReadOnlyEntry(name='Puppet Environment')
-        last_puppet_report = ReadOnlyEntry(name='Last Puppet Report')
-        model = ReadOnlyEntry(name='Model')
-        host_group = ReadOnlyEntry(name='Host Group')
-
-    @View.nested
-    class subscriptions(SatTabWithDropdown):
-        SUB_ITEM = 'Subscriptions'
-
-        status = ReadOnlyEntry(name='Status')
-        auto_attach = EditableEntryCheckbox(name='Auto-Attach')
-        run_auto_attach = Text(".//a[@ng-click='autoAttachSubscriptions()']")
-        service_level = EditableEntrySelect(name='Service Level')
-
-        resources = View.nested(AddRemoveSubscriptionsView)
-
-    @View.nested
-    class host_collections(SatTab):
-        TAB_NAME = 'Host Collections'
-
-        resources = View.nested(AddRemoveResourcesView)
-
-    @View.nested
-    class packages_actions(SatTabWithDropdown):
-        TAB_NAME = 'Packages'
-        SUB_ITEM = 'Actions'
-
-        action_type = Select(name='remote_action')
-        name = TextInput(locator='.//input[@ng-model="packageAction.term"]')
-        perform = Button('Perform')
-        update_all_packages = Button('Update All Packages')
-
-    @View.nested
-    class packages_installed(SatTabWithDropdown, SearchableViewMixin):
-        TAB_NAME = 'Packages'
-        SUB_ITEM = 'Installed'
-
-        remove_selected = Button('Remove Selected')
-        table = SatTable(
-            './/table',
-            column_widgets={0: Checkbox(locator="./input[@type='checkbox']")}
-        )
-
-    @View.nested
-    class packages_applicable(SatTabWithDropdown, SearchableViewMixin):
-        TAB_NAME = 'Packages'
-        SUB_ITEM = 'Applicable'
-
-        upgrade_selected = ActionsDropdown(
-            ".//span[contains(@class, 'btn-group')]")
-        update_all_packages = Button('Update All Packages')
-        table = SatTable(
-            './/table',
-            column_widgets={0: Checkbox(locator="./input[@type='checkbox']")}
-        )
-
-    @View.nested
-    class errata(SatTab):
-        lce_filter = Select(
-            locator='.//select[@ng-model="selectedErrataOption"]')
-        searchbox = Search()
-        apply_selected = ActionsDropdown(
-            ".//span[contains(@class, 'btn-group')]")
-        recalculate = Button('Recalculate')
-        table = SatTable(
-            './/table',
-            column_widgets={
-                0: Checkbox(locator="./input[@type='checkbox']"),
-                'Id': Text('./a'),
-
-            }
-        )
-
-        def search(self, query, lce=None):
-            """Apply available filters before proceeding with searching and
-            automatically set proper search mask if errata id instead of errata
-            title was passed.
-
-            :param str query: search query to type into search field. Both
-                errata id (RHEA-2012:0055) and errata title (Sea_Erratum) are
-                supported.
-            :param str optional lce: filter by lifecycle environment
-            :return: list of dicts representing table rows
-            :rtype: list
-            """
-            if lce is not None:
-                self.lce_filter.fill(lce)
-
-            if re.search(r'\w{4}-\d{4}:\d{4}', query):
-                query = 'id = {}'.format(query)
-            self.searchbox.search(query)
-
-            return self.table.read()
-
-    @View.nested
-    class repository_sets(SatTab, SearchableViewMixin):
-        TAB_NAME = 'Repository Sets'
-
-        show_all = Checkbox(
-            locator=".//input[contains(@ng-model, 'contentAccessModeAll')]")
-        limit_to_lce = Checkbox(
-            locator=".//input[contains(@ng-model, 'contentAccessModeEnv')]")
-        actions = ActionsDropdown("//div[contains(@class, 'btn-group')]")
-
-        table = SatTable(
-            './/table',
-            column_widgets={
-                0: Checkbox(locator="./input[@type='checkbox']"),
-                'Product Name': Text('./a'),
-            }
-        )
-
-        def read(self):
-            """Sometimes no checkboxes are checked off by default, selecting
-            "Show All" in such case.
-            """
-            if (
-                    self.show_all.read() is False
-                    and self.limit_to_lce.read() is False):
-                self.show_all.fill(True)
-            return super().read()
+    def update(self, entity_name, values):
+        """Update content host values."""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.fill(values)
+        view.flash.assert_no_error()
+        view.flash.dismiss()
 
 
-class ContentHostTaskDetailsView(TaskDetailsView):
+@navigator.register(ContentHostEntity, 'All')
+class ShowAllContentHosts(NavigateStep):
+    """Navigate to All Content Hosts screen."""
+    VIEW = ContentHostsView
 
-    @property
-    def is_displayed(self):
-        breadcrumb_loaded = self.browser.wait_for_element(
-            self.breadcrumb, exception=False)
-        return (
-                breadcrumb_loaded
-                and self.breadcrumb.locations[0] == 'Content Hosts'
-                and len(self.breadcrumb.locations) > 2
-        )
+    def step(self, *args, **kwargs):
+        self.view.menu.select('Hosts', 'Content Hosts')
+
+
+@navigator.register(ContentHostEntity, 'Edit')
+class EditContentHost(NavigateStep):
+    """Navigate to Content Host details screen.
+
+    Args:
+        entity_name: name of content host
+    """
+    VIEW = ContentHostDetailsView
+
+    def prerequisite(self, *args, **kwargs):
+        return self.navigate_to(self.obj, 'All')
+
+    def step(self, *args, **kwargs):
+        entity_name = kwargs.get('entity_name')
+        self.parent.search(entity_name)
+        self.parent.table.row(name=entity_name)['Name'].widget.click()
