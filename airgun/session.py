@@ -210,8 +210,8 @@ class Session(object):
                 self.take_screenshot()
         except Exception as err:
             LOGGER.exception(err)
-        finally:
-            self._factory.finalize(passed)
+        # finally:
+        #     self._factory.finalize(passed)
 
     def take_screenshot(self):
         """Take screen shot from the current browser window.

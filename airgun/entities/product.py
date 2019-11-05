@@ -21,7 +21,7 @@ class ProductEntity(BaseEntity):
         :param sync_plan_values: dict with values for creating sync_plan from
          product create page
         """
-        self.navigate_to_all(path_url=self.path_url)
+        # self.navigate_to_all(path_url=self.path_url)
         view = self.navigate_to(self, 'New')
         view.fill(values)
         if sync_plan_values:

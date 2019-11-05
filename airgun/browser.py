@@ -4,16 +4,17 @@ tests.
 import base64
 import logging
 import os
-import selenium
 import time
 import urllib
-
+import json
 from datetime import datetime
 from fauxfactory import gen_string
+import selenium
 from selenium import webdriver
 from selenium.webdriver.common.action_chains import ActionChains
-from wait_for import wait_for
+from wait_for import wait_for, TimedOutError
 from widgetastic.browser import Browser, DefaultPlugin
+from widgetastic.exceptions import NoSuchElementException
 
 from airgun import settings
 
@@ -33,9 +34,38 @@ except ImportError:
 
 LOGGER = logging.getLogger(__name__)
 
+def create_driver_session(session_id, executor_url):
+    from selenium.webdriver.remote.webdriver import WebDriver as RemoteWebDriver
+
+    # Save the original function, so we can revert our patch
+    org_command_execute = RemoteWebDriver.execute
+
+    def new_command_execute(self, command, params=None):
+        if command == "newSession":
+            # Mock the response
+            return {'success': 0, 'value': None, 'sessionId': session_id}
+        else:
+            return org_command_execute(self, command, params)
+
+    # Patch the function before creating the driver object
+    RemoteWebDriver.execute = new_command_execute
+
+    new_driver = webdriver.Remote(command_executor=executor_url, desired_capabilities={})
+    new_driver.session_id = session_id
+
+    # Replace the patched function with original function
+    RemoteWebDriver.execute = org_command_execute
+
+    return new_driver
 
 class DockerBrowserError(Exception):
     """Indicates any issue with DockerBrowser."""
+
+# class SessionRemote(webdriver.Remote):
+#     def start_session(self, desired_capabilities, browser_profile=None):
+#         # Skip the NEW_SESSION command issued by the original driver
+#         # and set only some required attributes
+#         self.w3c = True
 
 
 def _sauce_ondemand_url(saucelabs_user, saucelabs_key):
@@ -83,10 +113,10 @@ class SeleniumBrowserFactory(object):
         values.
 
         :param str optional provider: Browser provider name. One of
-            ('selenium', 'docker', 'saucelabs', 'remote'). If none specified -
+            ('selenium', 'docker', 'saucelabs'). If none specified -
             :attr:`settings.selenium.browser` is used.
         :param str optional browser: Browser name. One of ('chrome', 'firefox',
-            'ie', 'edge', 'phantomjs'). Not required for ``docker``
+            'ie', 'edge', 'phantomjs', 'remote'). Not required for ``docker``
             provider as it currently supports firefox only. If none specified -
             :attr:`settings.selenium.webdriver` is used.
         :param str optional test_name: Name of the test using this factory. It
@@ -100,6 +130,7 @@ class SeleniumBrowserFactory(object):
         self._docker = None
         self._webdriver = None
 
+
     def get_browser(self):
         """Returns selenium webdriver instance of selected ``provider`` and
         ``browser``.
@@ -107,21 +138,16 @@ class SeleniumBrowserFactory(object):
         :return: selenium webdriver instance
         :raises: ValueError: If wrong ``provider`` or ``browser`` specified.
         """
-        if self.provider == 'selenium':
+        if self.provider == 'selenium' or 'remote':
             return self._get_selenium_browser()
         elif self.provider == 'saucelabs':
             return self._get_saucelabs_browser()
         elif self.provider == 'docker':
             return self._get_docker_browser()
-        elif self.provider == 'remote':
-            return self._get_remote_browser()
         else:
             raise ValueError(
                 '"{}" browser is not supported. Please use one of {}'
-                .format(
-                    self.provider,
-                    ('selenium', 'saucelabs', 'docker', 'remote')
-                )
+                .format(self.provider, ('selenium', 'saucelabs', 'docker'))
             )
 
     def post_init(self):
@@ -152,7 +178,7 @@ class SeleniumBrowserFactory(object):
             or not. Is only used for ``saucelabs`` provider.
         :return: None
         """
-        if self.provider == 'selenium' or self.provider == 'remote':
+        if self.provider == 'selenium':
             self._webdriver.quit()
             return
         elif self.provider == 'saucelabs':
@@ -160,6 +186,8 @@ class SeleniumBrowserFactory(object):
             return self._finalize_saucelabs_browser(passed)
         elif self.provider == 'docker':
             return self._finalize_docker_browser()
+
+
 
     def _get_selenium_browser(self):
         """Returns selenium webdriver instance of selected ``browser``.
@@ -170,7 +198,6 @@ class SeleniumBrowserFactory(object):
         """
         kwargs = {}
         binary = settings.selenium.webdriver_binary
-        browseroptions = settings.selenium.browseroptions
 
         if self.browser == 'chrome':
             if binary:
@@ -179,9 +206,8 @@ class SeleniumBrowserFactory(object):
             prefs = {'download.prompt_for_download': False}
             options.add_experimental_option("prefs", prefs)
             options.add_argument('disable-web-security')
-            if browseroptions:
-                for opt in browseroptions.split(';'):
-                    options.add_argument(opt)
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
             kwargs.update({'options': options})
             self._webdriver = webdriver.Chrome(**kwargs)
         elif self.browser == 'firefox':
@@ -203,12 +229,38 @@ class SeleniumBrowserFactory(object):
         elif self.browser == 'phantomjs':
             self._webdriver = webdriver.PhantomJS(
                 service_args=['--ignore-ssl-errors=true'])
+        elif self.browser == 'remote':
+            grid_url = "http://127.0.0.1:4444/wd/hub"
+            login_url = "https://qeblade36.rhq.lab.eng.bos.redhat.com/users/login"
+            sessions_req = urllib.request.urlopen(grid_url + "/sessions")
+            sessions_data = sessions_req.read()
+            sessions_encoding = sessions_req.info().get_content_charset('utf-8')
+            sessions = json.loads(sessions_data.decode(sessions_encoding))
+            if len(sessions['value']) > 0:
+                for session in sessions["value"]:
+                    self._webdriver = create_driver_session(session['id'], grid_url)
+                    if self._webdriver.current_url != login_url:
+                        self._webdriver = None
+                    else:
+                        break
+            if self._webdriver is None:
+                options = webdriver.ChromeOptions()
+                prefs = {'download.prompt_for_download': False}
+                options.add_experimental_option("prefs", prefs)
+                options.add_argument('disable-web-security')
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                # capabilities = vars(settings.webdriver_desired_capabilities)
+                self._webdriver = webdriver.Remote(
+                    desired_capabilities=options.to_capabilities()
+                )
+                print("This URL we need to PASS ==> "+ self._webdriver.command_executor._url)
         if self._webdriver is None:
             raise ValueError(
                 '"{}" webdriver is not supported. Please use one of {}'
                 .format(
-                    self.browser,
-                    ('chrome', 'firefox', 'ie', 'edge', 'phantomjs')
+                    self.provider,
+                    ('chrome', 'firefox', 'ie', 'edge', 'phantomjs', 'remote')
                 )
             )
         return self._webdriver
@@ -220,16 +272,51 @@ class SeleniumBrowserFactory(object):
 
         :raises: ValueError: If wrong ``browser`` specified.
         """
+        if self.browser == 'chrome':
+            desired_capabilities = webdriver.DesiredCapabilities.CHROME.copy()
+            enable_downloading = {
+                'chromeOptions': {
+                    'args': ['disable-web-security'],
+                    'prefs': {'download.prompt_for_download': False}
+                }
+            }
+            desired_capabilities.update(enable_downloading)
+            if settings.webdriver_desired_capabilities:
+                desired_capabilities.update(
+                    vars(settings.webdriver_desired_capabilities))
+        elif self.browser == 'firefox':
+            desired_capabilities = webdriver.DesiredCapabilities.FIREFOX.copy()
+            if settings.webdriver_desired_capabilities:
+                desired_capabilities.update(
+                    vars(settings.webdriver_desired_capabilities))
+        elif self.browser == 'ie':
+            desired_capabilities = (
+                webdriver.DesiredCapabilities.INTERNETEXPLORER.copy())
+            if settings.webdriver_desired_capabilities:
+                desired_capabilities.update(
+                    vars(settings.webdriver_desired_capabilities))
+        elif self.browser == 'edge':
+            desired_capabilities = webdriver.DesiredCapabilities.EDGE.copy()
+            desired_capabilities['acceptSslCerts'] = True
+            desired_capabilities['javascriptEnabled'] = True
+            if settings.webdriver_desired_capabilities:
+                desired_capabilities.update(
+                    vars(settings.webdriver_desired_capabilities))
+        else:
+            raise ValueError(
+                '"{}" webdriver on saucelabs is currently not supported. '
+                'Please use one of {}'
+                .format(self.provider, ('chrome', 'firefox', 'ie', 'edge'))
+            )
+
         self._webdriver = webdriver.Remote(
             command_executor=_sauce_ondemand_url(
                 settings.selenium.saucelabs_user,
                 settings.selenium.saucelabs_key
             ),
-            desired_capabilities=self._get_webdriver_capabilities()
+            desired_capabilities=desired_capabilities
         )
-        idle_timeout = settings.webdriver_desired_capabilities.idleTimeout
-        if idle_timeout:
-            self._webdriver.command_executor.set_timeout(int(idle_timeout))
+        # todo: attempt to rename job here
         return self._webdriver
 
     def _get_docker_browser(self):
@@ -255,7 +342,7 @@ class SeleniumBrowserFactory(object):
             raise ValueError(
                 '"{}" webdriver in docker container is currently not'
                 'supported. Please use one of {}'
-                .format(self.browser, ('chrome', 'firefox'))
+                .format(self.provider, ('chrome', 'firefox'))
             )
         if settings.webdriver_desired_capabilities:
             self._docker._capabilities.update(
@@ -263,60 +350,6 @@ class SeleniumBrowserFactory(object):
         self._docker.start()
         self._webdriver = self._docker.webdriver
         return self._webdriver
-
-    def _get_remote_browser(self):
-        """Returns remote webdriver instance of selected ``browser``.
-
-        Note: should not be called directly, use :meth:`get_browser` instead.
-        """
-        self._webdriver = webdriver.Remote(
-            command_executor=settings.selenium.command_executor,
-            desired_capabilities=self._get_webdriver_capabilities()
-        )
-        idle_timeout = settings.webdriver_desired_capabilities.idleTimeout
-        if idle_timeout:
-            self._webdriver.command_executor.set_timeout(int(idle_timeout))
-        return self._webdriver
-
-    def _get_webdriver_capabilities(self):
-        """Returns webdriver capabilities of selected ``browser``.
-
-        Note: should not be called directly, use :meth:`_get_remote_browser`
-        or :meth:`_get_saucelabs_browser` instead.
-
-        :raises: ValueError: If wrong ``browser`` specified.
-        """
-        if self.browser == 'chrome':
-            desired_capabilities = webdriver.DesiredCapabilities.CHROME.copy()
-            enable_downloading = {
-                'chromeOptions': {
-                    'args': ['disable-web-security'],
-                    'prefs': {'download.prompt_for_download': False}
-                }
-            }
-            desired_capabilities.update(enable_downloading)
-        elif self.browser == 'firefox':
-            desired_capabilities = webdriver.DesiredCapabilities.FIREFOX.copy()
-        elif self.browser == 'ie':
-            desired_capabilities = (
-                webdriver.DesiredCapabilities.INTERNETEXPLORER.copy())
-        elif self.browser == 'edge':
-            desired_capabilities = webdriver.DesiredCapabilities.EDGE.copy()
-            desired_capabilities['acceptSslCerts'] = True
-            desired_capabilities['javascriptEnabled'] = True
-        else:
-            raise ValueError(
-                '"{}" webdriver capabilities is currently not supported. '
-                'Please use one of {}'
-                .format(self.browser, ('chrome', 'firefox', 'ie', 'edge'))
-            )
-        if settings.webdriver_desired_capabilities:
-            desired_capabilities.update(
-                vars(settings.webdriver_desired_capabilities))
-
-        desired_capabilities.update({'name': self.test_name})
-
-        return desired_capabilities
 
     def _finalize_saucelabs_browser(self, passed):
         """SauceLabs has no way to determine whether test passed or failed
@@ -670,7 +703,13 @@ class AirgunBrowser(Browser):
         el = self.element(locator, *args, **kwargs)
         self.execute_script(
             "arguments[0].scrollIntoView(false);", el, silent=True)
-        ActionChains(self.selenium).move_to_element(el).perform()
+        try:
+            ActionChains(self.selenium).move_to_element(el).perform()
+        except Exception as e:
+            if "javascript error: Cannot read property 'left' of undefined" in e.msg:
+                self.logger.debug("Ignoring 'Cannot read property left of undefined' exception")
+            else:
+                pass
         return el
 
     def get_downloads_list(self):
@@ -754,7 +793,10 @@ class AirgunBrowser(Browser):
         )
         if not file_uri:
             file_uri = files[0]
-        if (not save_path and settings.selenium.browser == 'selenium'):
+        if (
+                not save_path
+                and settings.selenium.browser == 'selenium'
+                and settings.selenium.webdriver != 'remote'):
             # if test is running locally, there's no need to save the file once
             # again except when explicitly asked to
             file_path = urllib.parse.unquote(
@@ -770,3 +812,48 @@ class AirgunBrowser(Browser):
         self.selenium.back()
         self.plugin.ensure_page_safe()
         return file_path
+
+    def wait_for_element(
+            self, locator, parent=None, visible=False, timeout=5, delay=0.2,
+            exception=True, ensure_page_safe=False):
+        """Wait for presence or visibility of elements specified by a locator.
+        todo: wrap default wait_for_element method once #132 issue is fixed in widgetastic.core
+
+        :param locator: Elements locator
+        :param parent: Elements parent locator
+        :param visible: If False, then it only checks presence not considering visibility.
+            If True, it also checks visibility.
+        :param timeout: How long to wait for.
+        :param delay: How often to check.
+        :param exception: If True (default), in case of element not being found an exception
+            will be raised. If False, it returns False.
+        :param ensure_page_safe: Whether to call the ``ensure_page_safe`` hook on repeat.
+        :returns: WebElement if element found according to params.
+        :raises: NoSuchElementException: if element not found.
+        """
+        def _element_lookup():
+            try:
+                return self.elements(locator,
+                                     parent=parent,
+                                     check_visibility=visible,
+                                     check_safe=ensure_page_safe)
+            # allow other exceptions through to caller on first wait
+            except NoSuchElementException:
+                return False
+        # turn the timeout into NoSuchElement
+        try:
+            result = wait_for(
+                _element_lookup,
+                num_sec=timeout,
+                delay=delay,
+                fail_condition=lambda elements: not bool(elements),
+                fail_func=self.plugin.ensure_page_safe if ensure_page_safe else None
+            )
+        except TimedOutError:
+            if exception:
+                raise NoSuchElementException(
+                    'Failed waiting for element with {} in {}'.format(locator, parent))
+            else:
+                return None
+        # wait_for returns NamedTuple, return first item from 'out', the WebElement
+        return result.out[0]
