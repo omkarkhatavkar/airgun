@@ -34,39 +34,38 @@ except ImportError:
 
 LOGGER = logging.getLogger(__name__)
 
-def create_driver_session(session_id, executor_url):
-    from selenium.webdriver.remote.webdriver import WebDriver as RemoteWebDriver
-
-    # Save the original function, so we can revert our patch
-    org_command_execute = RemoteWebDriver.execute
-
-    def new_command_execute(self, command, params=None):
-        if command == "newSession":
-            # Mock the response
-            return {'success': 0, 'value': None, 'sessionId': session_id}
-        else:
-            return org_command_execute(self, command, params)
-
-    # Patch the function before creating the driver object
-    RemoteWebDriver.execute = new_command_execute
-
-    new_driver = webdriver.Remote(command_executor=executor_url, desired_capabilities={})
-    new_driver.session_id = session_id
-
-    # Replace the patched function with original function
-    RemoteWebDriver.execute = org_command_execute
-
-    return new_driver
+# def create_driver_session(session_id, executor_url):
+#     from selenium.webdriver.remote.webdriver import WebDriver as RemoteWebDriver
+#
+#     # Save the original function, so we can revert our patch
+#     org_command_execute = RemoteWebDriver.execute
+#
+#     def new_command_execute(self, command, params=None):
+#         if command == "newSession":
+#             # Mock the response
+#             return {'success': 0, 'value': None, 'sessionId': session_id}
+#         else:
+#             return org_command_execute(self, command, params)
+#
+#     # Patch the function before creating the driver object
+#     RemoteWebDriver.execute = new_command_execute
+#
+#     new_driver = webdriver.Remote(command_executor=executor_url, desired_capabilities={})
+#     new_driver.session_id = session_id
+#
+#     # Replace the patched function with original function
+#     RemoteWebDriver.execute = org_command_execute
+#
+#     return new_driver
 
 class DockerBrowserError(Exception):
     """Indicates any issue with DockerBrowser."""
 
-# class SessionRemote(webdriver.Remote):
-#     def start_session(self, desired_capabilities, browser_profile=None):
-#         # Skip the NEW_SESSION command issued by the original driver
-#         # and set only some required attributes
-#         self.w3c = True
-
+class SessionRemote(webdriver.Remote):
+    def start_session(self, desired_capabilities, browser_profile=None):
+        # Skip the NEW_SESSION command issued by the original driver
+        # and set only some required attributes
+        self.w3c = True
 
 def _sauce_ondemand_url(saucelabs_user, saucelabs_key):
     """Get sauce ondemand URL for a given user and key.
@@ -179,7 +178,7 @@ class SeleniumBrowserFactory(object):
         :return: None
         """
         if self.provider == 'selenium':
-            self._webdriver.quit()
+            self._webdriver.active = False
             return
         elif self.provider == 'saucelabs':
             self._webdriver.quit()
@@ -236,13 +235,21 @@ class SeleniumBrowserFactory(object):
             sessions_data = sessions_req.read()
             sessions_encoding = sessions_req.info().get_content_charset('utf-8')
             sessions = json.loads(sessions_data.decode(sessions_encoding))
-            if len(sessions['value']) > 0:
+            if len(sessions['value']) >= 4:
                 for session in sessions["value"]:
-                    self._webdriver = create_driver_session(session['id'], grid_url)
-                    if self._webdriver.current_url != login_url:
+                    # creating webdriver with the use of hack making w3c = True
+                    try:
+                        self._webdriver = SessionRemote(command_executor=grid_url, desired_capabilities={})
+                        self._webdriver.session_id = session['id']
+                        self._webdriver.w3c = False
+                        if self._webdriver.current_url != login_url:
+                            self._webdriver = None
+                        else:
+                            break
+                    except Exception as e:
+                        # delete the sessions are no more valid in case
+                        self._webdriver.quit()
                         self._webdriver = None
-                    else:
-                        break
             if self._webdriver is None:
                 options = webdriver.ChromeOptions()
                 prefs = {'download.prompt_for_download': False}
@@ -251,8 +258,10 @@ class SeleniumBrowserFactory(object):
                 options.add_argument("--no-sandbox")
                 options.add_argument("--disable-dev-shm-usage")
                 # capabilities = vars(settings.webdriver_desired_capabilities)
+                capabilities = options.to_capabilities()
                 self._webdriver = webdriver.Remote(
-                    desired_capabilities=options.to_capabilities()
+                    command_executor=grid_url,
+                    desired_capabilities=capabilities
                 )
                 print("This URL we need to PASS ==> "+ self._webdriver.command_executor._url)
         if self._webdriver is None:
