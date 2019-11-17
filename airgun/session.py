@@ -168,6 +168,7 @@ class Session(object):
         self._session_cookie = session_cookie
         self._factory = None
         self.browser = None
+        self.url_path = ""
 
     def __enter__(self):
         """Starts the browser, navigates to satellite, performs post-init
@@ -187,7 +188,7 @@ class Session(object):
             selenium_browser = self._factory.get_browser()
             self.browser = AirgunBrowser(selenium_browser, self)
 
-            self.browser.url = 'https://' + settings.satellite.hostname
+            self.browser.url = 'https://'+ settings.satellite.hostname + '/' + self.url_path
             self._factory.post_init()
 
             # Navigator
@@ -199,6 +200,11 @@ class Session(object):
         except Exception as exception:
             self.__exit__(*sys.exc_info())
             raise exception
+        return self
+
+    def __call__(self, url_path):
+        if url_path is not None:
+            self.url_path = url_path
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
