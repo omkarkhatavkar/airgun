@@ -35,6 +35,7 @@ class AnsibleVariablesView(BaseLoggedInView, SearchableViewMixin):
             self.title, exception=False
         ) is not None and self.browser.url.endswith('ansible_roles')
 
+
 class NewAnsibleVariableView(BaseLoggedInView):
     """View while creating a new Ansible Variable"""
 
