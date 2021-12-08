@@ -1,10 +1,10 @@
+from navmazing import NavigateToSibling
+
 from airgun.entities.base import BaseEntity
 from airgun.navigation import NavigateStep
 from airgun.navigation import navigator
 from airgun.views.ansible_role import AnsibleRolesImportView
 from airgun.views.ansible_role import AnsibleRolesView
-
-from navmazing import NavigateToSibling
 
 
 class AnsibleRolesEntity(BaseEntity):
@@ -24,7 +24,8 @@ class AnsibleRolesEntity(BaseEntity):
         view.flash.assert_no_error()
         view.flash.dismiss()
 
-    def count_imported_roles(self):
+    @property
+    def imported_roles_count(self):
         view = self.navigate_to(self, 'All')
         return view.total_imported_roles.read()
 
