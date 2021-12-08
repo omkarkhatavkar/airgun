@@ -29,7 +29,7 @@ class AnsibleVariablesEntity(BaseEntity):
     def create(self, values):
         view = self.navigate_to(self, 'New')
         view.fill(values)
-        view.submit_button.click()
+        view.submit.click()
         view.flash.assert_no_error()
         view.flash.dismiss()
 
