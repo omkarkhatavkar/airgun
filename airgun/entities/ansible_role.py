@@ -4,6 +4,8 @@ from airgun.navigation import navigator
 from airgun.views.ansible_role import AnsibleRolesImportView
 from airgun.views.ansible_role import AnsibleRolesView
 
+from navmazing import NavigateToSibling
+
 
 class AnsibleRolesEntity(BaseEntity):
     endpoint_path = '/ansible/ansible_roles'
@@ -47,11 +49,9 @@ class ShowAllRoles(NavigateStep):
 class ImportAnsibleRole(NavigateStep):
     """Navigate to the Import Roles page"""
 
-    endpoint_path = '/ansible/ansible_roles'
     VIEW = AnsibleRolesImportView
 
-    def prerequisite(self, *args, **kwargs):
-        return self.navigate_to(self.obj, 'All')
+    prerequisite = NavigateToSibling('All')
 
     def step(self, *args, **kwargs):
         self.parent.import_button.click()
