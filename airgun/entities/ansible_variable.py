@@ -4,6 +4,7 @@ from airgun.navigation import navigator
 from airgun.views.ansible_variable import AnsibleVariablesView
 from airgun.views.ansible_variable import NewAnsibleVariableView
 
+from navmazing import NavigateToSibling
 
 class AnsibleVariablesEntity(BaseEntity):
     endpoint_path = '/ansible/ansible_variables'
@@ -60,8 +61,7 @@ class NewAnsibleVariable(NavigateStep):
 
     VIEW = NewAnsibleVariableView
 
-    def prerequisite(self, *args, **kwargs):
-        return self.navigate_to(self.obj, 'All')
+    prerequisite = NavigateToSibling('All')
 
     def step(self, *args, **kwargs):
         self.parent.new_variable.click()
