@@ -8,6 +8,8 @@ from airgun.views.ansible_role import AnsibleRolesView
 
 
 class AnsibleRolesEntity(BaseEntity):
+    """Main Ansible roles entity"""
+
     endpoint_path = '/ansible/ansible_roles'
 
     def search(self, value):
@@ -26,12 +28,16 @@ class AnsibleRolesEntity(BaseEntity):
 
     @property
     def imported_roles_count(self):
+        """Return the number of Ansible roles currently imported into Satellite"""
         view = self.navigate_to(self, 'All')
-        return view.total_imported_roles.read()
+        return int(view.total_imported_roles.read())
 
     def import_all_roles(self):
+        """Import all available roles and return the number of roles
+        that were available at import time
+        """
         view = self.navigate_to(self, 'Import')
-        available_roles_count = view.total_available_roles.read()
+        available_roles_count = int(view.total_available_roles.read())
         view.select_all.fill(True)
         view.submit.click()
         return available_roles_count
@@ -39,6 +45,7 @@ class AnsibleRolesEntity(BaseEntity):
 
 @navigator.register(AnsibleRolesEntity, 'All')
 class ShowAllRoles(NavigateStep):
+    """Navigate to the Ansible Roles page"""
 
     VIEW = AnsibleRolesView
 
