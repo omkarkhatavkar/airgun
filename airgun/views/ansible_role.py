@@ -23,7 +23,7 @@ class AnsibleRolesView(BaseLoggedInView, SearchableViewMixin):
     title = Text("//h1[contains(., text()='Ansible Roles')")
     import_button = Text("//a[contains(@href, '/ansible_roles/import')]")
     submit = Button('Submit')
-    total_imported_roles = Text("//span[@class='pagination-pf-items-total']")
+    total_imported_roles = Text("//span[contains(@class, 'pagination-pf-items-total')]")
     table = SatTable(
         './/table',
         column_widgets={
@@ -38,9 +38,10 @@ class AnsibleRolesView(BaseLoggedInView, SearchableViewMixin):
 
     @property
     def is_displayed(self):
-        return self.browser.wait_for_element(
-            self.title, exception=False
-        ) is not None and self.browser.url.endswith('ansible_roles')
+        return (
+            self.title.is_displayed and
+            self.import_button.is_displayed
+        )
 
 
 class AnsibleRolesImportView(BaseLoggedInView):
