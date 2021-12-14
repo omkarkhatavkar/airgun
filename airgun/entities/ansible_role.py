@@ -15,13 +15,16 @@ class AnsibleRolesEntity(BaseEntity):
     def search(self, value):
         """Search for existing Ansible Role"""
         view = self.navigate_to(self, 'All')
-        return view.search(value)
+        view.search(value)
+        return view.table.read()
 
-    def delete(self, entity_name, values):
+    def delete(self, entity_name):
         """Delete Ansible Role from Satellite"""
+        # This method currently does not work as the Name column table header 
+        # cell includes the `▲` character used for sorting that column
         view = self.navigate_to(self, 'All')
         view.search(entity_name)
-        view.table.row(name=entity_name)['Actions'].widget.fill('Delete')
+        view.table.row(Name=entity_name)['Actions'].widget.fill('Delete')
         self.browser.handle_alert()
         view.flash.assert_no_error()
         view.flash.dismiss()

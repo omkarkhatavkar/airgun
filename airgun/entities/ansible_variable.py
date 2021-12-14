@@ -15,14 +15,14 @@ class AnsibleVariablesEntity(BaseEntity):
     def search(self, value):
         """Search for existing Ansible variable"""
         view = self.navigate_to(self, 'All')
-        return view.search(value)
+        view.search(value)
+        return view.table.read()
 
-    def delete(self, entity_name, values):
+    def delete(self, entity_name):
         """Delete Ansible variable from Satellite"""
         view = self.navigate_to(self, 'All')
         view.search(entity_name)
-        view.table.row(name=entity_name)['Actions'].widget.fill('Delete')
-        self.browser.handle_alert()
+        view.table.row(name=entity_name)['Actions'].widget.click(handle_alert=True)
         view.flash.assert_no_error()
         view.flash.dismiss()
 
@@ -40,7 +40,7 @@ class AnsibleVariablesEntity(BaseEntity):
         view.flash.dismiss()
 
     def create_with_overrides(self, values):
-        """Create a new Ansible variable with all optional fields on the 
+        """Create a new Ansible variable with all optional fields on the
         Create Ansible Variable page available
         """
         view = self.navigate_to(self, 'New')

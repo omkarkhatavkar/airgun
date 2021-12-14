@@ -1,11 +1,11 @@
 from widgetastic.widget import Checkbox
+from widgetastic.widget import Table
 from widgetastic.widget import Text
 from widgetastic_patternfly import BreadCrumb
 from widgetastic_patternfly4 import Button
 from widgetastic_patternfly4 import PatternflyTable
 
 from airgun.views.common import BaseLoggedInView
-from airgun.views.common import SatTable
 from airgun.views.common import SearchableViewMixin
 from airgun.widgets import ActionsDropdown
 from airgun.widgets import Pagination
@@ -24,10 +24,10 @@ class AnsibleRolesView(BaseLoggedInView, SearchableViewMixin):
     import_button = Text("//a[contains(@href, '/ansible_roles/import')]")
     submit = Button('Submit')
     total_imported_roles = Text("//span[contains(@class, 'pagination-pf-items-total')]")
-    table = SatTable(
+    table = Table(
         './/table',
         column_widgets={
-            'Name': Text("./a"),
+            '▲ Name	': Text("./a"),
             'Hostgroups': Text("./a"),
             'Hosts': Text("./a"),
             'Imported at': Text("./a"),
@@ -38,10 +38,7 @@ class AnsibleRolesView(BaseLoggedInView, SearchableViewMixin):
 
     @property
     def is_displayed(self):
-        return (
-            self.title.is_displayed and
-            self.import_button.is_displayed
-        )
+        return self.title.is_displayed and self.import_button.is_displayed
 
 
 class AnsibleRolesImportView(BaseLoggedInView):
