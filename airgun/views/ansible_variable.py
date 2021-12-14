@@ -24,17 +24,16 @@ class AnsibleVariablesView(BaseLoggedInView, SearchableViewMixin):
             'Role': Text("./a"),
             'Type': Text("./a"),
             'Imported?': Text("./a"),
-            'Actions': Text("./a[contains(., text()='Delete')]"),
+            # 'Actions': Text("./a[contains(., text()='Delete')]"),
+            'Actions': Text(".//a[@data-method='delete']"),
+            # 'Actions': Button('Delete')
         },
     )
     pagination = Pagination()
 
     @property
     def is_displayed(self):
-        return (
-            self.title.is_displayed and
-            self.new_variable.is_displayed
-        )
+        return self.title.is_displayed and self.new_variable.is_displayed
 
 
 class NewAnsibleVariableView(BaseLoggedInView):
@@ -74,7 +73,9 @@ class NewAnsibleVariableView(BaseLoggedInView):
     @property
     def expanded(self):
         """Check whether this section is expanded"""
-        return 'active' in self.browser.get_attribute('class', self.expand_optional_input_validator)
+        return 'active' in self.browser.get_attribute(
+            'class', self.expand_optional_input_validator
+        )
 
     def expand(self):
         """Expand the Optional Input Validator section"""
