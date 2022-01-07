@@ -48,6 +48,7 @@ from airgun.entities.os import OperatingSystemEntity
 from airgun.entities.oscapcontent import OSCAPContentEntity
 from airgun.entities.oscappolicy import OSCAPPolicyEntity
 from airgun.entities.oscaptailoringfile import OSCAPTailoringFileEntity
+from airgun.entities.new_contentview import NewContentViewEntity
 from airgun.entities.package import PackageEntity
 from airgun.entities.partitiontable import PartitionTableEntity
 from airgun.entities.product import ProductEntity
@@ -374,6 +375,11 @@ class Session:
     def contentview(self):
         """Instance of Content View entity."""
         return self._open(ContentViewEntity)
+
+    @cached_property
+    def new_contentview(self):
+        """Instance of the New Content View entity."""
+        return self._open(NewContentViewEntity)
 
     @cached_property
     def contentviewfilter(self):
