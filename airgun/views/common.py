@@ -371,10 +371,15 @@ class AddRemoveResourcesView(View):
 
 class NewAddRemoveResourcesView(View):
     searchbox = PF4Search()
-    type = Dropdown(locator='.//div[contains(@class, "All repositories") or contains(@aria-haspopup="listbox")]')
-    Status = Dropdown(locator='.//div[contains(@class, "All") or contains(@aria-haspopup="listbox")]')
+    type = Dropdown(
+        locator='.//div[contains(@class, "All repositories") or'
+        ' contains(@aria-haspopup="listbox")]'
+    )
+    Status = Dropdown(
+        locator='.//div[contains(@class, "All") or contains(@aria-haspopup="listbox")]'
+    )
     add_repo = PF4Button('OUIA-Generated-Button-secondary-2')
-    #Need to add kebab menu
+    # Need to add kebab menu
     table = PatternflyTable(
         component_id='OUIA-Generated-Table-4',
         column_widgets={
@@ -384,7 +389,7 @@ class NewAddRemoveResourcesView(View):
             'Product': Text('.//a'),
             'Sync State': Text('.//a'),
             'Content': Text('.//a'),
-            'Status': Text('.//a')
+            'Status': Text('.//a'),
         },
     )
 
@@ -510,7 +515,7 @@ class SearchableViewMixin(WTMixin):
         return self.table.read()
 
 
-class SearchableViewMixinPF4(WTMixin):
+class SearchableViewMixinPF4(SearchableViewMixin):
     """Mixin which adds :class:`airgun.widgets.Search` widget and
     :meth:`airgun.widgets.Search.search` to your view. It's useful for _most_ entities list views
     where searchbox and results table are present.
@@ -519,16 +524,6 @@ class SearchableViewMixinPF4(WTMixin):
     """
 
     searchbox = PF4Search()
-    welcome_message = Text("//div[@class='blank-slate-pf' or @id='welcome']")
-
-    def is_searchable(self):
-        """Verify that search procedure can be executed against specific page.
-        That means that we have search field present on the page and that page
-        is not a welcome one
-        """
-        if self.searchbox.search_field.is_displayed and (not self.welcome_message.is_displayed):
-            return True
-        return False
 
     def search(self, query):
         """Perform search using searchbox on the page and return table
@@ -548,7 +543,7 @@ class SearchableViewMixinPF4(WTMixin):
         if not self.is_searchable():
             return None
         self.searchbox.search(query)
-        #TODO: may need a sleeper or a wait_for
+        # TODO: may need a sleeper or a wait_for
         time.sleep(3)
         return self.table.read()
 
