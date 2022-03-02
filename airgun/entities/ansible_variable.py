@@ -39,19 +39,6 @@ class AnsibleVariablesEntity(BaseEntity):
         view.flash.assert_no_error()
         view.flash.dismiss()
 
-    def create_with_overrides(self, values):
-        """Create a new Ansible variable with all optional fields on the
-        Create Ansible Variable page available
-        """
-        view = self.navigate_to(self, 'New')
-        view.override.fill(True)
-        view.expand()
-        view.add_matcher_button.click()
-        view.fill(values)
-        view.submit.click
-        view.flash.assert_no_error()
-        view.flash.dismiss()
-
 
 @navigator.register(AnsibleVariablesEntity, 'All')
 class ShowAllVariables(NavigateStep):

@@ -1,11 +1,14 @@
 from widgetastic.widget import Checkbox
+from widgetastic.widget import Select
 from widgetastic.widget import Text
 from widgetastic.widget import TextInput
+from widgetastic.widget import View
 from widgetastic_patternfly import BreadCrumb
 
 from airgun.views.common import BaseLoggedInView
 from airgun.views.common import SatTable
 from airgun.views.common import SearchableViewMixin
+from airgun.widgets import CustomParameter
 from airgun.widgets import FilteredDropdown
 from airgun.widgets import Pagination
 from airgun.widgets import SatSelect
@@ -36,6 +39,10 @@ class AnsibleVariablesView(BaseLoggedInView, SearchableViewMixin):
         return self.title.is_displayed and self.new_variable.is_displayed
 
 
+class MatcherTable(CustomParameter):
+    add_new_value = Text("..//a[contains(text(),'+ Add Matcher')]")
+
+
 class NewAnsibleVariableView(BaseLoggedInView):
     """View while creating a new Ansible Variable"""
 
@@ -58,12 +65,24 @@ class NewAnsibleVariableView(BaseLoggedInView):
     merge_overrides = Checkbox(id='ansible_variable_merge_overrides')
     merge_default = Checkbox(id='ansible_variable_merge_default')
     avoid_duplicates = Checkbox(id='ansible_variable_avoid_duplicates')
-    add_matcher_button = Text("//a[contains(@class, 'add_nested_fields')]")
-    attribute_type = SatSelect("//div[@class='matcher-group']/select[1]")
-    attribute_value = Text("//div[@class='matcher-group']/input[1]")
-    matcher_value = TextInput(id='new_lookup_value_value')
     submit = Text('//input[@value="Submit"]')
     cancel = Text("//a[contains(., text()='Cancel']")
+
+    @View.nested
+    class matcher_section(View):
+        add_matcher = Text("//a[contains(@class, 'add_nested_fields')]")
+        params = MatcherTable(
+            locator=".//table[@class='table white-header']",
+            column_widgets={
+                'Attribute type': Select(".//select"),
+                'Value': TextInput(locator=".//textarea[@id='new_lookup_value_value']"),
+                'Actions': Text(".//a"),
+            },
+        )
+
+        def before_fill(self, values):
+            if not self.params.is_displayed:
+                self.add_matcher.click()
 
     @property
     def expand_button(self):
