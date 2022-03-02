@@ -34,6 +34,8 @@ class AnsibleVariablesEntity(BaseEntity):
     def create(self, values):
         """Create a new Ansible variable"""
         view = self.navigate_to(self, 'New')
+        view.override.fill(True)
+        view.matcher_section.before_fill(values)
         view.fill(values)
         view.submit.click()
         view.flash.assert_no_error()
