@@ -916,13 +916,13 @@ class CustomParameter(Table):
 
     add_new_value = Text("..//a[contains(text(),'+ Add Parameter')]")
 
-    def __init__(self, parent, locator=None, id=None, logger=None):
+    def __init__(self, parent, locator=None, id=None, logger=None, column_widgets=None):
         """Supports initialization via ``locator=`` or ``id=``"""
         if locator and id or not locator and not id:
             raise ValueError('Please specify either locator or id')
         locator = locator or f".//table[@id='{id}']"
 
-        column_widgets = {
+        column_widgets = column_widgets or {
             'Name': TextInput(locator=".//input[@placeholder='Name']"),
             'Value': TextInput(locator=".//textarea[@placeholder='Value']"),
             'Actions': Text(
@@ -930,6 +930,11 @@ class CustomParameter(Table):
                 "or @title='Remove Parameter']"
             ),
         }
+        self.name = list(column_widgets.keys())[0]
+        self.name_key = '_'.join(self.name.lower().split(' '))
+        self.value = list(column_widgets.keys())[1]
+        self.value_key = '_'.join(self.value.lower().split(' '))
+
         super().__init__(parent, locator=locator, logger=logger, column_widgets=column_widgets)
 
     def read(self):
@@ -938,9 +943,9 @@ class CustomParameter(Table):
         """
         parameters = []
         for row in self.rows():
-            name = row['Name'].widget.read()
-            value = row['Value'].widget.read()
-            parameters.append({'name': name, 'value': value})
+            name = row[self.name].widget.read()
+            value = row[self.value].widget.read()
+            parameters.append({self.name_key: name, self.value_key: value})
         return parameters
 
     def add(self, value):
@@ -950,8 +955,8 @@ class CustomParameter(Table):
         """
         self.add_new_value.click()
         new_row = self.__getitem__(-1)
-        new_row['Name'].widget.fill(value['name'])
-        new_row['Value'].widget.fill(value['value'])
+        new_row[self.name].widget.fill(value[self.name_key])
+        new_row[self.value].widget.fill(value[self.value_key])
 
     def remove(self, name):
         """Remove parameter entries from the table based on name.
@@ -959,7 +964,7 @@ class CustomParameter(Table):
         :param value: dict with format {'name': str, 'value': str}
         """
         for row in self.rows():
-            if row['Name'].widget.read() == name:
+            if row[self.name].widget.read() == name:
                 row['Actions'].widget.click()  # click 'Remove'
 
     def fill(self, values):
@@ -978,7 +983,7 @@ class CustomParameter(Table):
             params_to_fill = values
 
         try:
-            names_to_fill = [param['name'] for param in params_to_fill]
+            names_to_fill = [param[self.name_key] for param in params_to_fill]
         except KeyError:
             raise KeyError("parameter value is missing 'name' key")
 
@@ -992,8 +997,8 @@ class CustomParameter(Table):
 
         # Check if we need to update or remove any rows
         for row in self.rows():
-            this_name = row['Name'].widget.read()
-            this_value = row['Value'].widget.read()
+            this_name = row[self.name].widget.read()
+            this_value = row[self.value].widget.read()
             if this_name not in names_to_fill:
                 # Delete row if its name/value is not in desired values
                 row['Actions'].widget.click()  # click 'Remove' icon
@@ -1002,14 +1007,14 @@ class CustomParameter(Table):
                 # First get the desired value for this param name
                 desired_value = None
                 for index, param in enumerate(params_to_fill):
-                    if param['name'] == this_name:
-                        desired_value = param['value']
+                    if param[self.name_key] == this_name:
+                        desired_value = param[self.value_key]
                         # Since we're editing this name now, don't add it later
                         params_to_fill.pop(index)
                         break
                 if desired_value is not None and this_value != desired_value:
                     # Update row's value for this name
-                    row['Value'].widget.fill(desired_value)
+                    row[self.value].widget.fill(desired_value)
                 else:
                     # Desired parameter name/value is already filled
                     continue

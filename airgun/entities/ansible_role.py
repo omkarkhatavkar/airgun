@@ -20,7 +20,7 @@ class AnsibleRolesEntity(BaseEntity):
 
     def delete(self, entity_name):
         """Delete Ansible Role from Satellite"""
-        # This method currently does not work as the Name column table header 
+        # This method currently does not work as the Name column table header
         # cell includes the `▲` character used for sorting that column
         view = self.navigate_to(self, 'All')
         view.search(entity_name)
