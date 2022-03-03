@@ -75,6 +75,7 @@ class NewAnsibleVariableView(BaseLoggedInView):
             locator=".//table[@class='table white-header']",
             column_widgets={
                 'Attribute type': Select(".//select"),
+                'Attribute value': TextInput(locator=".//input[@class='matcher_value']"),
                 'Value': TextInput(locator=".//textarea[@id='new_lookup_value_value']"),
                 'Actions': Text(".//a"),
             },
