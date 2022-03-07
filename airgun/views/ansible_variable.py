@@ -55,7 +55,7 @@ class MatcherActions(View):
             self.matcher_key.fill(values['matcher_key'])
             self.matcher_value.fill(values['matcher_value'])
         else:
-            raise "Missing the matcher key and values"
+            raise Exception("Missing the matcher key and values")
 
     def read(self):
         return {'matcher_key': self.matcher_key.read(), 'matcher_value': self.matcher_value.read()}
