@@ -987,13 +987,14 @@ class CustomParameter(Table):
         except KeyError:
             raise KeyError("parameter value is missing 'name' key")
 
-        # Check if duplicate names were passed in
-        if len(set(names_to_fill)) < len(names_to_fill):
-            raise ValueError(
-                "Cannot use fill() with duplicate parameter names. "
-                "If you wish to explicitly add a duplicate name, "
-                "use CustomParameter.add()"
-            )
+        # Check if duplicate names were passed in and skip incase list
+        if not isinstance(names_to_fill[0], dict):
+            if len(set(names_to_fill)) < len(names_to_fill):
+                raise ValueError(
+                    "Cannot use fill() with duplicate parameter names. "
+                    "If you wish to explicitly add a duplicate name, "
+                    "use CustomParameter.add()"
+                )
 
         # Check if we need to update or remove any rows
         for row in self.rows():

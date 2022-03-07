@@ -43,6 +43,24 @@ class MatcherTable(CustomParameter):
     add_new_value = Text("..//a[contains(text(),'+ Add Matcher')]")
 
 
+class MatcherActions(View):
+    """Interface table has Acttibute type column that contains select field and
+    text input field."""
+
+    matcher_key = Select(".//select")
+    matcher_value = TextInput(locator=".//input[@class='matcher_value']")
+
+    def fill(self, values):
+        if isinstance(values, dict):
+            self.matcher_key.fill(values['matcher_key'])
+            self.matcher_value.fill(values['matcher_value'])
+        else:
+            raise "Missing the matcher key and values"
+
+    def read(self):
+        return {'matcher_key': self.matcher_key.read(), 'matcher_value': self.matcher_value.read()}
+
+
 class NewAnsibleVariableView(BaseLoggedInView):
     """View while creating a new Ansible Variable"""
 
@@ -74,8 +92,7 @@ class NewAnsibleVariableView(BaseLoggedInView):
         params = MatcherTable(
             locator=".//table[@class='table white-header']",
             column_widgets={
-                'Attribute type': Select(".//select"),
-                'Attribute value': TextInput(locator=".//input[@class='matcher_value']"),
+                'Attribute type': MatcherActions(),
                 'Value': TextInput(locator=".//textarea[@id='new_lookup_value_value']"),
                 'Actions': Text(".//a"),
             },
