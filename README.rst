@@ -1,8 +1,6 @@
-.. image:: https://travis-ci.org/SatelliteQE/airgun.svg
-   :scale: 50 %
-   :alt: Build Status
-   :align: left
-   :target: https://travis-ci.org/SatelliteQE/airgun
+  .. image:: https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white
+     :target: https://github.com/pre-commit/pre-commit
+     :alt: pre-commit
 
 
 Airgun
